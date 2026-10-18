@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 
 from research_agent.agent import Agent
 from research_agent.demo import DEMO_QUESTION, demo_llm, demo_registry
-from research_agent.llm import LLM
+from research_agent.llm import LLM, live_configured, make_llm
 from research_agent.tools import Notes, ToolRegistry, default_registry
 from research_agent.tracing import Tracer
 
@@ -46,7 +46,7 @@ class AgentServer(ThreadingHTTPServer):
 
     @property
     def live_available(self) -> bool:
-        return bool(os.environ.get("ANTHROPIC_API_KEY"))
+        return live_configured()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -106,11 +106,15 @@ class Handler(BaseHTTPRequestHandler):
             if not self.server.live_available:
                 return self._json(
                     HTTPStatus.BAD_REQUEST,
-                    {"error": "ANTHROPIC_API_KEY is not set on the server. Use Demo mode."},
+                    {
+                        "error": "No live model configured (set ANTHROPIC_API_KEY, or "
+                        "RESEARCH_AGENT_BASE_URL and RESEARCH_AGENT_MODEL). Use Demo mode."
+                    },
                 )
-            from research_agent.llm import AnthropicLLM
-
-            llm = AnthropicLLM()
+            try:
+                llm = make_llm()
+            except RuntimeError as exc:
+                return self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             tools = default_registry(Notes())
         else:
             return self._json(HTTPStatus.BAD_REQUEST, {"error": "mode must be demo or live"})
@@ -174,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
 
     server = serve(args.host, args.port)
     url = f"http://{args.host}:{server.server_address[1]}"
-    mode = "live + demo" if server.live_available else "demo only (set ANTHROPIC_API_KEY for live)"
+    mode = "live + demo" if server.live_available else "demo only (see README to enable live)"
     print(f"research-agent UI running at {url}  [{mode}]  Press Ctrl+C to stop.")
     if not args.no_browser:
         webbrowser.open(url)

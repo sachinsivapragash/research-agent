@@ -13,11 +13,11 @@ from research_agent.agent import Agent, AgentResult
 from research_agent.llm import (
     DEFAULT_MODEL,
     LLM,
-    AnthropicLLM,
     LLMResponse,
     ScriptedLLM,
     ToolCall,
     Usage,
+    make_llm,
 )
 from research_agent.report import to_markdown
 from research_agent.tools import Notes, default_registry
@@ -75,7 +75,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("question", nargs="?", help="The question to research")
     parser.add_argument("--max-steps", type=int, default=8, help="Maximum model turns (default 8)")
     parser.add_argument("--parallel", type=int, default=4, help="Max tools run at once (default 4)")
-    parser.add_argument("--model", default=None, help=f"Model name (default: {DEFAULT_MODEL})")
+    parser.add_argument(
+        "--model", default=None, help=f"Model name (Claude default: {DEFAULT_MODEL})"
+    )
+    parser.add_argument(
+        "--provider",
+        choices=["anthropic", "openai"],
+        default=None,
+        help="anthropic = Claude API. openai = any OpenAI-compatible server, e.g. Ollama",
+    )
     parser.add_argument("--out", type=Path, default=None, help="Save a Markdown report here")
     parser.add_argument(
         "--trace", type=Path, default=None, help="Write a JSONL trace (default: runs/<time>.jsonl)"
@@ -130,11 +138,11 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         question = args.question
         try:
-            anthropic_llm = AnthropicLLM(model=args.model)
+            llm = make_llm(args.provider, args.model)
         except RuntimeError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
-        llm, model = anthropic_llm, anthropic_llm.model
+        model = getattr(llm, "model", "unknown")
 
     trace_path: Path | None = None
     if not args.no_trace and not args.demo:

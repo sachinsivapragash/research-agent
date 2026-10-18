@@ -55,7 +55,7 @@ Built with zero JavaScript libraries: a small custom 3D renderer on a canvas, so
 | Mode | Needs |
 |---|---|
 | **Demo** | Nothing. Scripted, offline run showing parallel calls, a cache hit and one fake citation |
-| **Live** | `ANTHROPIC_API_KEY` set before starting `research-agent-ui` |
+| **Live** | Any one model below, set before starting `research-agent-ui` |
 
 How it works: `web.py` is a standard-library server. The browser opens a Server-Sent Events stream, and every event the agent emits (`model_turn`, `tool_start`, `tool_result`, `run_end`) is pushed to the page as it happens. The server only listens on `127.0.0.1`, so nobody else on your network can reach it.
 
@@ -76,7 +76,7 @@ question ─► │ Agent loop                                   │ ─► repo
 | Module | Responsibility |
 |---|---|
 | `agent.py` | The loop: model turns, parallel tool execution, injection guard, tracing |
-| `llm.py` | Provider-neutral `LLM` protocol, Claude client, scripted model for tests |
+| `llm.py` | Provider-neutral `LLM` protocol, Claude client, OpenAI-compatible client, scripted model for tests |
 | `tools.py` | Tool registry (validation, cache, thread safety) and core tools |
 | `integrations.py` | Wikipedia, GitHub, arXiv and Open-Meteo, all free with no extra keys |
 | `http.py` | GET with retries and full-jitter exponential backoff |
@@ -126,6 +126,16 @@ docker run --rm -e ANTHROPIC_API_KEY=%ANTHROPIC_API_KEY% research-agent "your qu
 docker run --rm -p 8765:8765 --entrypoint research-agent-ui research-agent --host 0.0.0.0 --no-browser
 ```
 
+## Choose a model (Claude, or free options)
+
+| Option | Cost | Set these in the same cmd window, then start the agent |
+|---|---|---|
+| Claude | Paid API | `set ANTHROPIC_API_KEY=...` |
+| Google Gemini | Free tier available (limits apply) | `set RESEARCH_AGENT_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai`, `set RESEARCH_AGENT_API_KEY=...`, `set RESEARCH_AGENT_MODEL=gemini-3.8-flash` |
+| Ollama | Free, runs on your own PC | `set RESEARCH_AGENT_BASE_URL=http://localhost:11434/v1`, `set RESEARCH_AGENT_MODEL=llama3.1` |
+
+Any server that speaks the OpenAI chat format with tool calling works. Check the provider's current model names and free-tier limits yourself; they change. Never save keys in project files.
+
 ## Options
 
 | Flag | Meaning |
@@ -136,6 +146,7 @@ docker run --rm -p 8765:8765 --entrypoint research-agent-ui research-agent --hos
 | `--parallel N` | Max tools at once (default 4) |
 | `--max-steps N` | Max model turns (default 8) |
 | `--no-cache` | Turn off the result cache |
+| `--provider NAME` | `anthropic` or `openai` (any OpenAI-compatible server). Picked automatically from your settings |
 | `--model NAME` | Model (default `claude-sonnet-5-5`, or `RESEARCH_AGENT_MODEL`) |
 | `--demo` | Offline scripted run |
 | `-v` | Print each step |
@@ -185,7 +196,7 @@ CI runs all of these on Python 3.10 to 3.13, builds the Docker image and runs th
 - [ ] Streaming output
 - [ ] Evaluation set that scores answer quality and citation accuracy
 - [ ] Check that a cited page actually supports the claim
-- [ ] A second LLM provider
+- [x] A second LLM provider (any OpenAI-compatible server: Gemini, Ollama, ...)
 
 ## License
 
