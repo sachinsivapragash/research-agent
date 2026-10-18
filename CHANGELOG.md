@@ -3,6 +3,7 @@
 ## 0.4.0
 
 ### Added
+- Answer panel renders Markdown (headings, bold, lists, code, rules) safely, instead of showing raw symbols.
 - OpenAI-compatible model client, so Live mode also works with free options such as Gemini's free tier or Ollama. New `--provider` flag and `RESEARCH_AGENT_BASE_URL`, `RESEARCH_AGENT_API_KEY` settings.
 
 ## 0.3.0

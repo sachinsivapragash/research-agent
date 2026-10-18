@@ -109,7 +109,12 @@ h1 em{font-style:normal;background:linear-gradient(90deg,var(--core),var(--ok));
 .answering .lede,.answering #side{opacity:0!important;filter:blur(6px)!important;pointer-events:none}
 #answer .body{padding:18px 20px;overflow-y:auto;font-size:15px;line-height:1.65;scrollbar-width:thin}
 #answer .body p{margin-bottom:10px}
-#answer .body ul{margin:0 0 10px 18px}
+#answer .body ul,#answer .body ol{margin:0 0 10px 20px}
+#answer .body li{margin-bottom:4px}
+#answer .body h4{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--core);margin:16px 0 8px}
+#answer .body hr{border:0;border-top:1px solid rgba(255,255,255,.1);margin:14px 0}
+#answer .body strong{color:#fff}
+#answer .body code{font-family:var(--mono,monospace);font-size:13px;background:rgba(255,255,255,.07);padding:1px 5px;border-radius:5px}
 #answer .body a{color:var(--core);word-break:break-all}
 .caret{display:inline-block;width:8px;height:1.1em;vertical-align:-3px;background:var(--core);margin-left:2px;animation:beat .8s steps(2) infinite}
 .verdict{display:flex;gap:16px;align-items:center;padding:16px 20px;border-top:1px solid var(--edge)}
@@ -673,14 +678,29 @@ function verify(ev) {
   addStep(cited.length ? `${good} of ${cited.length} citations verified${bad.size ? ` · <span style="color:var(--bad)">${bad.size} never seen</span>` : ""}` : "No links cited", bad.size ? C.bad : C.ok);
 }
 
+function inline(l) {
+  return l
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?![*\w])/g, "$1<em>$2</em>")
+    .replace(/https?:\/\/[^\s<)*]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+}
+
+/* tiny, safe markdown: text is escaped first, then only these patterns are turned into tags */
 function renderAnswer(text) {
-  const lines = esc(text).split("\n"), out = []; let list = false;
-  for (const l of lines) {
-    const linked = l.replace(/https?:\/\/[^\s<)]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
-    if (/^\s*[-*] /.test(l)) { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${linked.replace(/^\s*[-*] /, "")}</li>`); }
-    else { if (list) { out.push("</ul>"); list = false; } if (l.trim()) out.push(`<p>${linked}</p>`); }
+  const out = []; let list = null;
+  const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const raw of esc(text).split("\n")) {
+    const l = raw.replace(/\s+$/, "");
+    let m;
+    if (!l.trim()) { close(); continue; }
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(l)) { close(); out.push("<hr>"); }
+    else if ((m = l.match(/^\s*(#{1,6})\s+(.*)$/))) { close(); out.push(`<h4>${inline(m[2])}</h4>`); }
+    else if ((m = l.match(/^\s*[-*+]\s+(.*)$/))) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else if ((m = l.match(/^\s*\d+[.)]\s+(.*)$/))) { if (list !== "ol") { close(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else { close(); out.push(`<p>${inline(l)}</p>`); }
   }
-  if (list) out.push("</ul>");
+  close();
   return out.join("");
 }
 
