@@ -138,3 +138,28 @@ def test_make_llm_and_live_configured(monkeypatch: Any) -> None:
     assert isinstance(llm, OpenAICompatLLM) and llm.model == "llama3.1"
     with pytest.raises(RuntimeError):
         make_llm("nope")
+
+
+def test_extra_content_round_trip() -> None:
+    sig = {"google": {"thought_signature": "abc123"}}
+    data = {
+        "choices": [
+            {
+                "message": {
+                    "tool_calls": [
+                        {
+                            "id": "c1",
+                            "function": {"name": "weather", "arguments": '{"city": "Pune"}'},
+                            "extra_content": sig,
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+    first = make(FakeSession([FakeResponse(200, data)])).complete("s", [], [])
+    assert first.tool_calls[0].extra == sig
+    message = first.to_message()
+    assert message["content"][0]["extra"] == sig
+    out = OpenAICompatLLM.to_openai_messages("s", [message])
+    assert out[1]["tool_calls"][0]["extra_content"] == sig

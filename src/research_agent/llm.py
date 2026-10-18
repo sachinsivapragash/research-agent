@@ -24,6 +24,8 @@ class ToolCall:
     id: str
     name: str
     input: dict[str, Any]
+    # Provider extras that must be sent back unchanged (e.g. Gemini thought signatures)
+    extra: dict[str, Any] | None = None
 
 
 @dataclass
@@ -59,9 +61,15 @@ class LLMResponse:
         if self.text:
             blocks.append({"type": "text", "text": self.text})
         for call in self.tool_calls:
-            blocks.append(
-                {"type": "tool_use", "id": call.id, "name": call.name, "input": call.input}
-            )
+            block: dict[str, Any] = {
+                "type": "tool_use",
+                "id": call.id,
+                "name": call.name,
+                "input": call.input,
+            }
+            if call.extra:
+                block["extra"] = call.extra
+            blocks.append(block)
         return {"role": "assistant", "content": blocks}
 
 
@@ -193,15 +201,18 @@ class OpenAICompatLLM:
                 out.append({"role": message["role"], "content": content})
             elif message["role"] == "assistant":
                 text = "\n".join(b["text"] for b in content if b["type"] == "text")
-                calls = [
-                    {
+                calls = []
+                for b in content:
+                    if b["type"] != "tool_use":
+                        continue
+                    call: dict[str, Any] = {
                         "id": b["id"],
                         "type": "function",
                         "function": {"name": b["name"], "arguments": json.dumps(b["input"])},
                     }
-                    for b in content
-                    if b["type"] == "tool_use"
-                ]
+                    if b.get("extra"):
+                        call["extra_content"] = b["extra"]
+                    calls.append(call)
                 entry: dict[str, Any] = {"role": "assistant", "content": text or None}
                 if calls:
                     entry["tool_calls"] = calls
@@ -295,6 +306,7 @@ class OpenAICompatLLM:
                     id=raw.get("id") or f"call_{uuid.uuid4().hex[:8]}",
                     name=function.get("name", ""),
                     input=args,
+                    extra=raw.get("extra_content") or None,
                 )
             )
         usage = data.get("usage") or {}
