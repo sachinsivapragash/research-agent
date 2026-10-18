@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>research-agent · evidence lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#04050a; --ink:#e9ecf5; --dim:#8a90a6; --faint:#4a5068;
+  --glass:rgba(14,17,28,.58); --edge:rgba(255,255,255,.08); --edge2:rgba(255,255,255,.16);
+  --web:#ffb547; --api:#a78bfa; --local:#2dd4bf; --ok:#4ade80; --bad:#ff4d6d; --core:#9ee7ff;
+  --sans:"Space Grotesk",ui-sans-serif,system-ui,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --spring:cubic-bezier(.34,1.56,.64,1); --out:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
+@media (pointer:fine){html,body,button,input,a{cursor:none}}
+canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block}
+.vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.75) 100%)}
+.flash{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 30%,rgba(255,77,109,.35) 100%);transition:opacity .6s}
+.flash.on{opacity:1;transition:opacity .08s}
+
+/* ---------- cursor ---------- */
+.cur-dot,.cur-ring{position:fixed;left:0;top:0;pointer-events:none;z-index:100;border-radius:50%;will-change:transform}
+.cur-dot{width:6px;height:6px;margin:-3px 0 0 -3px;background:#fff;mix-blend-mode:difference}
+.cur-ring{width:38px;height:38px;margin:-19px 0 0 -19px;border:1px solid rgba(255,255,255,.55);transition:width .35s var(--out),height .35s var(--out),margin .35s var(--out),border-color .3s,background .3s,border-radius .35s var(--out)}
+.cur-ring.hover{width:64px;height:64px;margin:-32px 0 0 -32px;border-color:var(--core);background:rgba(158,231,255,.06)}
+.cur-ring.node{width:84px;height:84px;margin:-42px 0 0 -42px;border-color:currentColor;border-style:dashed;animation:spin 6s linear infinite}
+.cur-ring.text{width:3px;height:30px;margin:-15px 0 0 -1.5px;border-radius:2px;background:var(--core);border-color:transparent}
+.cur-ring.down{width:26px;height:26px;margin:-13px 0 0 -13px}
+.cur-label{position:fixed;left:0;top:0;z-index:101;pointer-events:none;font:500 11px var(--mono);letter-spacing:.06em;color:var(--ink);opacity:0;transform:translate(26px,-6px);white-space:nowrap;transition:opacity .2s}
+.ripple{position:fixed;z-index:99;pointer-events:none;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;border:1px solid var(--core);animation:ripple .7s var(--out) forwards}
+@keyframes ripple{to{transform:scale(9);opacity:0}}
+@keyframes spin{to{rotate:360deg}}
+@media (pointer:coarse){.cur-dot,.cur-ring,.cur-label{display:none}}
+
+/* ---------- layout ---------- */
+.ui{position:fixed;inset:0;pointer-events:none;z-index:10}
+.ui>*{pointer-events:auto}
+.reveal{opacity:0;transform:translateY(18px);filter:blur(8px);transition:opacity 1s var(--out),transform 1s var(--out),filter 1s var(--out)}
+.ready .reveal{opacity:1;transform:none;filter:none}
+
+header{position:absolute;left:32px;top:28px;max-width:520px}
+.brand{font:500 12px var(--mono);letter-spacing:.18em;color:var(--dim);text-transform:uppercase;display:flex;align-items:center;gap:10px}
+.brand i{width:8px;height:8px;border-radius:50%;background:var(--core);box-shadow:0 0 12px var(--core);animation:beat 2.4s ease-in-out infinite}
+@keyframes beat{50%{opacity:.35}}
+h1{font-weight:500;font-size:clamp(28px,3.6vw,46px);line-height:1.05;letter-spacing:-.02em;margin:14px 0 12px}
+h1 .w{display:inline-block;overflow:hidden;vertical-align:top}
+h1 .w span{display:inline-block;transform:translateY(105%);transition:transform 1.1s var(--out)}
+.ready h1 .w span{transform:none}
+h1 em{font-style:normal;background:linear-gradient(90deg,var(--core),var(--ok));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{color:var(--dim);font-size:15px;line-height:1.55;max-width:460px}
+
+.panel{background:var(--glass);border:1px solid var(--edge);border-radius:16px;backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%)}
+
+/* trace timeline */
+#trace{position:absolute;right:28px;top:28px;bottom:132px;width:340px;display:flex;flex-direction:column;overflow:hidden}
+.ph{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--edge);font:500 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.ph b{color:var(--ink);font-weight:500}
+#steps{list-style:none;overflow-y:auto;padding:8px 10px 16px;flex:1;scrollbar-width:thin;scrollbar-color:var(--faint) transparent}
+#steps li{position:relative;padding:10px 10px 10px 30px;border-radius:10px;font-size:13px;line-height:1.45;color:var(--ink);opacity:0;transform:translateX(30px);filter:blur(6px);transition:opacity .6s var(--out),transform .6s var(--out),filter .6s var(--out),background .3s}
+#steps li.in{opacity:1;transform:none;filter:none}
+#steps li:hover{background:rgba(255,255,255,.04)}
+#steps li::before{content:"";position:absolute;left:12px;top:15px;width:7px;height:7px;border-radius:50%;background:var(--c,var(--dim));box-shadow:0 0 10px var(--c,transparent)}
+#steps li.run::before{animation:beat .9s ease-in-out infinite}
+#steps .meta{display:block;margin-top:3px;font:400 11px var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#steps .tag{font:500 10px var(--mono);letter-spacing:.08em;padding:2px 6px;border-radius:5px;margin-left:6px;background:rgba(255,255,255,.07);color:var(--dim)}
+#steps .tag.ok{color:var(--ok);background:rgba(74,222,128,.1)}
+#steps .tag.cache{color:var(--core);background:rgba(158,231,255,.1)}
+#steps .tag.err{color:var(--bad);background:rgba(255,77,109,.12)}
+.empty{color:var(--faint);font-size:13px;padding:18px 12px;line-height:1.6}
+
+/* stats + legend */
+#side{position:absolute;left:32px;bottom:132px;width:300px;padding:16px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.stat b{display:block;font:500 22px var(--mono);letter-spacing:-.02em;transition:color .4s}
+.stat span{font:400 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--dim)}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:8px;height:8px;border-radius:50%}
+.hint{margin-top:12px;font:400 11px var(--mono);color:var(--faint)}
+
+/* command bar */
+#bar{position:absolute;left:50%;bottom:28px;transform:translateX(-50%);width:min(860px,calc(100% - 56px));display:flex;gap:10px;align-items:center;padding:10px}
+.ready #bar.reveal{transform:translateX(-50%)}
+#bar.reveal{transform:translate(-50%,18px)}
+#q{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--ink);font:400 16px var(--sans);padding:12px 10px}
+#q::placeholder{color:var(--faint)}
+.seg{display:flex;position:relative;background:rgba(255,255,255,.05);border-radius:10px;padding:3px}
+.seg button{position:relative;z-index:1;border:0;background:none;color:var(--dim);font:500 12px var(--mono);letter-spacing:.08em;padding:9px 12px;border-radius:8px;transition:color .3s}
+.seg button[aria-pressed=true]{color:var(--bg)}
+.seg button:disabled{opacity:.35}
+.seg .pill{position:absolute;top:3px;bottom:3px;border-radius:8px;background:var(--ink);transition:left .45s var(--spring),width .45s var(--spring)}
+#run{position:relative;overflow:hidden;border:0;border-radius:11px;padding:13px 22px;font:600 14px var(--sans);color:var(--bg);background:var(--core);transition:transform .25s var(--out),box-shadow .3s;box-shadow:0 0 0 rgba(158,231,255,0)}
+#run:hover{box-shadow:0 0 40px rgba(158,231,255,.45)}
+#run span{position:relative;z-index:1}
+#run::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.6) 50%,transparent 70%);transform:translateX(-120%);transition:transform .8s var(--out)}
+#run:hover::after{transform:translateX(120%)}
+#run:disabled{background:var(--faint);box-shadow:none}
+
+/* answer */
+#answer{position:absolute;left:32px;top:168px;width:min(520px,calc(100% - 64px));max-height:calc(100vh - 168px - 120px);display:flex;flex-direction:column;opacity:0;transform:translateX(-40px) scale(.96);filter:blur(10px);pointer-events:none;transition:opacity .8s var(--out),transform .8s var(--out),filter .8s var(--out)}
+#answer.show{opacity:1;transform:none;filter:none;pointer-events:auto}
+.lede,#side{transition:opacity .6s var(--out),filter .6s var(--out),transform 1s var(--out)}
+.answering .lede,.answering #side{opacity:0!important;filter:blur(6px)!important;pointer-events:none}
+#answer .body{padding:18px 20px;overflow-y:auto;font-size:15px;line-height:1.65;scrollbar-width:thin}
+#answer .body p{margin-bottom:10px}
+#answer .body ul{margin:0 0 10px 18px}
+#answer .body a{color:var(--core);word-break:break-all}
+.caret{display:inline-block;width:8px;height:1.1em;vertical-align:-3px;background:var(--core);margin-left:2px;animation:beat .8s steps(2) infinite}
+.verdict{display:flex;gap:16px;align-items:center;padding:16px 20px;border-top:1px solid var(--edge)}
+.gauge{position:relative;width:64px;height:64px;flex:none}
+.gauge svg{transform:rotate(-90deg)}
+.gauge circle{fill:none;stroke-width:5}
+.gauge .track{stroke:rgba(255,255,255,.08)}
+.gauge .val{stroke:var(--ok);stroke-linecap:round;stroke-dasharray:176;stroke-dashoffset:176;transition:stroke-dashoffset 1.6s var(--out),stroke .4s}
+.gauge b{position:absolute;inset:0;display:grid;place-items:center;font:500 15px var(--mono)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;font:400 11px var(--mono);padding:6px 9px;border-radius:8px;border:1px solid var(--edge2);color:var(--ink);text-decoration:none;opacity:0;transform:scale(.6) translateY(8px);transition:opacity .5s var(--out),transform .6s var(--spring),border-color .3s,background .3s}
+.chip.in{opacity:1;transform:none}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip.ok{border-color:rgba(74,222,128,.4)}
+.chip.ok:hover{background:rgba(74,222,128,.12)}
+.chip.bad{border-color:rgba(255,77,109,.55);color:#ffc2cd;background:rgba(255,77,109,.08)}
+.chip.bad:hover{background:rgba(255,77,109,.18)}
+.chip i{font-style:normal;font-weight:600}
+.chip.ok i{color:var(--ok)} .chip.bad i{color:var(--bad)}
+.vtext{font-size:13px;color:var(--dim);line-height:1.5}
+.vtext b{color:var(--ink);font-weight:500}
+.x{border:0;background:none;color:var(--dim);font:500 11px var(--mono);letter-spacing:.1em}
+.x:hover{color:var(--ink)}
+
+/* tooltip + labels + toast */
+#tip{position:fixed;z-index:50;pointer-events:none;max-width:320px;padding:10px 12px;font-size:12px;line-height:1.5;opacity:0;transform:translateY(6px);transition:opacity .2s,transform .25s var(--out)}
+#tip.on{opacity:1;transform:none}
+#tip b{display:block;font:500 12px var(--mono);margin-bottom:2px}
+#tip small{color:var(--dim);font-family:var(--mono);word-break:break-all}
+#labels{position:fixed;inset:0;pointer-events:none;z-index:5}
+.lbl{position:absolute;left:0;top:0;font:500 11px var(--mono);letter-spacing:.06em;color:var(--ink);white-space:nowrap;will-change:transform,opacity;text-shadow:0 0 12px #000}
+.lbl small{display:block;color:var(--dim);font-weight:400;font-size:9px;letter-spacing:.12em;text-transform:uppercase}
+#toast{position:fixed;left:50%;top:24px;z-index:60;transform:translate(-50%,-30px);opacity:0;padding:12px 16px;font-size:13px;border-color:rgba(255,77,109,.4);transition:opacity .4s,transform .5s var(--spring)}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* intro */
+#intro{position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:var(--bg);transition:opacity 1.2s var(--out),visibility 1.2s}
+#intro.gone{opacity:0;visibility:hidden}
+#intro div{font:500 12px var(--mono);letter-spacing:.3em;color:var(--dim);text-transform:uppercase;text-align:center}
+#intro b{display:block;font:500 56px var(--mono);letter-spacing:-.04em;color:var(--ink);margin-bottom:10px}
+.shake{animation:shake .5s cubic-bezier(.36,.07,.19,.97)}
+@keyframes shake{20%,80%{transform:translate(-2px,1px)}30%,50%,70%{transform:translate(4px,-2px)}40%,60%{transform:translate(-4px,2px)}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+@media (max-width:980px){
+  #trace{top:auto;bottom:158px;right:16px;left:16px;width:auto;height:140px}
+  #side{display:none}
+  header{left:20px;top:20px;right:20px}
+  .lede{display:none}
+  #answer{left:16px;width:calc(100% - 32px);top:auto;bottom:158px;transform:translateY(20px);max-height:58vh}
+  #answer.show{transform:none}
+  #bar{bottom:16px;width:calc(100% - 32px);flex-wrap:wrap}
+  #q{flex-basis:100%}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+<div id="intro" aria-hidden="true"><div><b id="count">00</b>calibrating evidence lab</div></div>
+<canvas id="scene" aria-hidden="true"></canvas>
+<div id="labels" aria-hidden="true"></div>
+<div class="vignette"></div>
+<div class="flash" id="flash"></div>
+
+<main class="ui" id="ui">
+  <header>
+    <div class="brand reveal"><i></i>research-agent · evidence lab</div>
+    <h1 id="title" aria-label="Every claim, traced to its source.">Every claim, traced to <em>its source.</em></h1>
+    <p class="lede reveal">AI answers often cite sources they never read. Watch this agent research live: every page it opens lands in the sphere, and any link it can't prove it saw is flagged.</p>
+  </header>
+
+  <section id="trace" class="panel reveal" aria-label="Live trace">
+    <div class="ph"><span>Live trace</span><b id="runid">idle</b></div>
+    <ol id="steps" aria-live="polite"><li class="empty in">Ask a question, or press Run to watch the offline demo.</li></ol>
+  </section>
+
+  <section id="side" class="panel reveal" aria-label="Run stats">
+    <div class="stats">
+      <div class="stat"><b id="s-steps">0</b><span>steps</span></div>
+      <div class="stat"><b id="s-tools">0</b><span>tools</span></div>
+      <div class="stat"><b id="s-cache">0</b><span>cached</span></div>
+      <div class="stat"><b id="s-tok">0</b><span>tokens</span></div>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--web)"></i>web</span>
+      <span><i style="background:var(--api)"></i>public API</span>
+      <span><i style="background:var(--local)"></i>local</span>
+      <span><i style="background:var(--ok)"></i>verified</span>
+      <span><i style="background:var(--bad)"></i>unverified</span>
+    </div>
+    <div class="hint">drag to orbit · scroll to zoom · hover anything</div>
+  </section>
+
+  <section id="answer" class="panel" aria-label="Answer" aria-live="polite">
+    <div class="ph"><span>Answer</span><button class="x" id="close" data-magnetic>close ✕</button></div>
+    <div class="body" id="abody"></div>
+    <div class="verdict">
+      <div class="gauge"><svg width="64" height="64"><circle class="track" cx="32" cy="32" r="28"/><circle class="val" id="gval" cx="32" cy="32" r="28"/></svg><b id="gnum">0%</b></div>
+      <div><div class="vtext" id="vtext"></div><div class="chips" id="chips" style="margin-top:8px"></div></div>
+    </div>
+  </section>
+
+  <form id="bar" class="panel reveal" autocomplete="off">
+    <label for="q" class="sr">Question</label>
+    <input id="q" placeholder="Ask a research question…" maxlength="500">
+    <div class="seg" role="group" aria-label="Mode">
+      <span class="pill" id="pill"></span>
+      <button type="button" data-mode="demo" aria-pressed="true" data-magnetic>DEMO</button>
+      <button type="button" data-mode="live" aria-pressed="false" data-magnetic>LIVE</button>
+    </div>
+    <button id="run" type="submit" data-magnetic><span>Run agent</span></button>
+  </form>
+</main>
+
+<div id="tip" class="panel"></div>
+<div id="toast" class="panel" role="alert"></div>
+<div class="cur-ring" id="ring"></div><div class="cur-dot" id="dot"></div><div class="cur-label" id="clabel"></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const C = { web: css("--web"), api: css("--api"), local: css("--local"), ok: css("--ok"), bad: css("--bad"), core: css("--core") };
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const ease = (t) => 1 - Math.pow(1 - t, 3);
+
+/* ============================== tools ============================== */
+const TOOLS = [
+  ["web_search", "web", "searches the web"], ["fetch_page", "web", "reads a full page"],
+  ["wikipedia_summary", "api", "Wikipedia"], ["github_repo_info", "api", "GitHub"],
+  ["arxiv_search", "api", "research papers"], ["weather", "api", "Open-Meteo"],
+  ["calculator", "local", "exact maths"], ["save_note", "local", "keeps findings"], ["read_notes", "local", "recalls findings"],
+];
+
+/* ============================== 3D core ============================== */
+const cv = $("#scene"), g = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+addEventListener("resize", resize); resize();
+
+const cam = { yaw: 0.6, pitch: -0.32, dist: 2600, ty: 0.6, tp: -0.32, td: 980, fov: 760, spin: 0, cx: 0, cy: 0 };
+function project(p) {
+  const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const x1 = p[0] * cy - p[2] * sy, z1 = p[0] * sy + p[2] * cy;
+  const y2 = p[1] * cp - z1 * sp, z2 = p[1] * sp + z1 * cp + cam.dist;
+  const s = cam.fov / Math.max(z2, 1);
+  return { x: cam.cx + x1 * s, y: cam.cy + y2 * s, s, z: z2 };
+}
+
+const sprites = {};
+function glow(color) {
+  if (sprites[color]) return sprites[color];
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const x = c.getContext("2d"), gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, color); gr.addColorStop(0.18, color + "cc"); gr.addColorStop(0.45, color + "33"); gr.addColorStop(1, color + "00");
+  x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+  return (sprites[color] = c);
+}
+
+/* stars */
+const stars = Array.from({ length: 520 }, () => {
+  const u = Math.random() * 2 - 1, t = Math.random() * Math.PI * 2, r = 1400 + Math.random() * 1600, q = Math.sqrt(1 - u * u);
+  return { p: [r * q * Math.cos(t), r * u, r * q * Math.sin(t)], b: Math.random() * 0.7 + 0.15, tw: Math.random() * 6 };
+});
+
+/* core: fibonacci sphere with nearest-neighbour edges */
+const CORE_N = 96, CORE_R = 74, core = [];
+for (let i = 0; i < CORE_N; i++) {
+  const y = 1 - (i / (CORE_N - 1)) * 2, r = Math.sqrt(1 - y * y), th = i * 2.399963;
+  core.push([Math.cos(th) * r * CORE_R, y * CORE_R, Math.sin(th) * r * CORE_R]);
+}
+const coreEdges = [];
+core.forEach((a, i) => {
+  core.map((b, j) => [j, (a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2]).filter(([j]) => j > i)
+    .sort((m, n) => m[1] - n[1]).slice(0, 3).forEach(([j]) => coreEdges.push([i, j]));
+});
+const coreState = { energy: 0.2, target: 0.2, rot: 0, label: "idle" };
+
+/* tool ring */
+const RING_R = 300;
+const nodes = TOOLS.map(([name, kind, about], i) => {
+  const a = (i / TOOLS.length) * Math.PI * 2;
+  const el = document.createElement("div"); el.className = "lbl"; el.innerHTML = `${name}<small>${about}</small>`;
+  $("#labels").appendChild(el);
+  return { name, kind, about, color: C[kind], base: a, p: [0, 0, 0], pulse: 0, flash: 0, err: 0, calls: 0, el, scr: null };
+});
+function placeNodes(t) {
+  nodes.forEach((n) => {
+    const a = n.base + t * 0.00004;
+    n.p = [Math.cos(a) * RING_R, Math.sin(a * 2 + 0.6) * 34, Math.sin(a) * RING_R];
+  });
+}
+
+/* evidence shell */
+const SHELL_R = 470, orbs = new Map();
+let orbCount = 0, ghostCount = 0;
+function normalize(u) {
+  return u.replace(/[.,;:!?*_]+$/, "").split("#")[0].replace(/^https?:\/\/(www\.)?/i, "").replace(/\/+$/, "").toLowerCase();
+}
+function shellPoint(i) {
+  const y = 1 - ((i * 0.618034) % 1) * 2, r = Math.sqrt(1 - y * y), th = i * 2.399963 + 0.7;
+  return [Math.cos(th) * r * SHELL_R, y * SHELL_R * 0.72, Math.sin(th) * r * SHELL_R];
+}
+function addOrb(url, fromNode, ghost = false) {
+  const key = normalize(url);
+  if (orbs.has(key)) { const o = orbs.get(key); o.hits++; o.flash = 1; return o; }
+  const to = ghost ? [-90 + 180 * (ghostCount++ % 2), -250 - 60 * Math.floor(ghostCount / 2), 60] : shellPoint(orbCount++ + 3);
+  const o = { url, key, from: fromNode ? [...fromNode.p] : [0, 0, 0], to, born: performance.now(),
+    color: fromNode ? fromNode.color : C.bad, state: ghost ? "ghost" : "seen", hits: 1, flash: 1, p: [0, 0, 0], scr: null, tool: fromNode ? fromNode.name : null };
+  orbs.set(key, o); return o;
+}
+
+/* packets + beams */
+const packets = [], beams = [];
+function sendPacket(a, b, color, dur = 900) {
+  packets.push({ a, b, color, t0: performance.now(), dur, trail: [] });
+}
+function arc(a, b, t) {
+  const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - 170, (a[2] + b[2]) / 2], u = 1 - t;
+  return [u*u*a[0] + 2*u*t*m[0] + t*t*b[0], u*u*a[1] + 2*u*t*m[1] + t*t*b[1], u*u*a[2] + 2*u*t*m[2] + t*t*b[2]];
+}
+
+/* ============================== input ============================== */
+const mouse = { x: innerWidth / 2, y: innerHeight / 2, nx: 0, ny: 0, down: false, dragX: 0, dragY: 0, moved: 0 };
+let dragYaw = 0, dragPitch = 0, hovered = null, highlight = null;
+addEventListener("pointermove", (e) => {
+  if (mouse.down && e.target === cv) {
+    dragYaw += (e.clientX - mouse.x) * 0.005; dragPitch = clamp(dragPitch + (e.clientY - mouse.y) * 0.003, -0.6, 0.7);
+    mouse.moved += Math.abs(e.clientX - mouse.x) + Math.abs(e.clientY - mouse.y);
+  }
+  mouse.x = e.clientX; mouse.y = e.clientY;
+  mouse.nx = e.clientX / innerWidth - 0.5; mouse.ny = e.clientY / innerHeight - 0.5;
+});
+cv.addEventListener("pointerdown", (e) => { mouse.down = true; mouse.moved = 0; cv.setPointerCapture(e.pointerId); });
+addEventListener("pointerup", () => { mouse.down = false; });
+cv.addEventListener("wheel", (e) => { e.preventDefault(); cam.td = clamp(cam.td + e.deltaY * 0.8, 620, 1700); }, { passive: false });
+cv.addEventListener("click", () => {
+  if (mouse.moved > 6 || !hovered) return;
+  if (hovered.url && !hovered.url.includes("example.org")) open(hovered.url, "_blank", "noopener");
+});
+
+/* ============================== cursor ============================== */
+const dot = $("#dot"), ring = $("#ring"), clabel = $("#clabel");
+const rp = { x: mouse.x, y: mouse.y };
+function cursorFrame() {
+  rp.x = lerp(rp.x, mouse.x, 0.2); rp.y = lerp(rp.y, mouse.y, 0.2);
+  dot.style.transform = `translate(${mouse.x}px,${mouse.y}px)`;
+  ring.style.transform = `translate(${rp.x}px,${rp.y}px)`;
+  clabel.style.left = rp.x + "px"; clabel.style.top = rp.y + "px";
+}
+function setCursor(kind, label = "", color = "") {
+  ring.classList.toggle("hover", kind === "hover"); ring.classList.toggle("node", kind === "node"); ring.classList.toggle("text", kind === "text");
+  ring.style.color = color; clabel.textContent = label; clabel.style.opacity = label ? 1 : 0;
+}
+addEventListener("pointerdown", (e) => {
+  ring.classList.add("down");
+  const r = document.createElement("span"); r.className = "ripple"; r.style.left = e.clientX + "px"; r.style.top = e.clientY + "px";
+  document.body.appendChild(r); setTimeout(() => r.remove(), 750);
+});
+addEventListener("pointerup", () => ring.classList.remove("down"));
+document.addEventListener("pointerover", (e) => {
+  const t = e.target;
+  if (t.closest("input")) setCursor("text");
+  else if (t.closest("button,a,.chip")) setCursor("hover");
+  else if (t !== cv || !hovered) setCursor("");
+});
+/* magnetic controls */
+document.querySelectorAll("[data-magnetic]").forEach((el) => {
+  el.addEventListener("pointermove", (e) => {
+    const r = el.getBoundingClientRect();
+    el.style.transform = `translate(${(e.clientX - r.left - r.width / 2) * 0.28}px,${(e.clientY - r.top - r.height / 2) * 0.38}px)`;
+  });
+  el.addEventListener("pointerleave", () => { el.style.transition = "transform .6s var(--spring)"; el.style.transform = ""; setTimeout(() => (el.style.transition = ""), 600); });
+});
+
+/* ============================== render ============================== */
+let last = performance.now();
+const tip = $("#tip");
+function frame(now) {
+  const dt = Math.min(now - last, 50); last = now;
+  cam.spin += dt * (mouse.down ? 0 : 0.000045);
+  cam.ty = 0.6 + cam.spin + dragYaw + mouse.nx * 0.5;
+  cam.tp = -0.32 + dragPitch + mouse.ny * 0.28;
+  /* scene centre glides aside so the answer card and trace panel never cover it */
+  const answering = document.body.classList.contains("answering");
+  const tcx = W > 980 ? (answering ? (560 + W - 370) / 2 : (W - 360) * 0.5 + 10) : W * 0.5;
+  const tcy = W > 980 ? H * 0.5 : H * (answering ? 0.24 : 0.36);
+  if (!cam.cx) { cam.cx = tcx; cam.cy = tcy; }
+  cam.cx = lerp(cam.cx, tcx, 0.045); cam.cy = lerp(cam.cy, tcy, 0.045);
+  cam.td = answering && W > 980 ? Math.max(cam.td, 1150) : cam.td;
+  cam.yaw = lerp(cam.yaw, cam.ty, 0.06); cam.pitch = lerp(cam.pitch, cam.tp, 0.06); cam.dist = lerp(cam.dist, cam.td, 0.035);
+  placeNodes(now);
+  coreState.energy = lerp(coreState.energy, coreState.target, 0.05);
+  coreState.rot += dt * (0.0002 + coreState.energy * 0.0012);
+
+  g.clearRect(0, 0, W, H);
+  g.globalCompositeOperation = "lighter";
+
+  /* stars with cursor repulsion */
+  for (const s of stars) {
+    const p = project(s.p); if (p.z < 1) continue;
+    let x = p.x, y = p.y; const dx = x - mouse.x, dy = y - mouse.y, d2 = dx * dx + dy * dy;
+    let b = s.b * (0.7 + 0.3 * Math.sin(now * 0.002 + s.tw));
+    if (d2 < 22000) { const f = 1 - d2 / 22000; x += dx * f * 0.35; y += dy * f * 0.35; b += f * 0.8; }
+    g.fillStyle = `rgba(200,215,255,${clamp(b, 0, 1)})`;
+    const r = clamp(p.s * 1.6, 0.4, 2.2); g.fillRect(x - r / 2, y - r / 2, r, r);
+  }
+
+  /* orbit rings */
+  for (const [R, al, tilt] of [[RING_R, 0.16, 34], [SHELL_R, 0.06, 0]]) {
+    g.beginPath();
+    for (let i = 0; i <= 160; i++) {
+      const a = (i / 160) * Math.PI * 2, p = project([Math.cos(a) * R, tilt ? Math.sin(a * 2 + 0.6) * tilt : 0, Math.sin(a) * R]);
+      i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y);
+    }
+    g.strokeStyle = `rgba(158,231,255,${al})`; g.lineWidth = 1; g.stroke();
+  }
+
+  /* core */
+  const cp = project([0, 0, 0]);
+  const pts = core.map((q) => {
+    const c = Math.cos(coreState.rot), s = Math.sin(coreState.rot), br = 1 + coreState.energy * 0.18 * Math.sin(now * 0.006);
+    return project([(q[0] * c - q[2] * s) * br, q[1] * br, (q[0] * s + q[2] * c) * br]);
+  });
+  g.lineWidth = 0.8;
+  for (const [i, j] of coreEdges) {
+    const a = pts[i], b = pts[j], depth = clamp(1.4 - (a.z - cam.dist + 80) / 160, 0.15, 1);
+    g.strokeStyle = `rgba(158,231,255,${0.22 * depth + coreState.energy * 0.25})`;
+    g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+  }
+  const gs = (210 + coreState.energy * 260) * cp.s;
+  g.globalAlpha = 0.55 + coreState.energy * 0.45; g.drawImage(glow(C.core), cp.x - gs / 2, cp.y - gs / 2, gs, gs); g.globalAlpha = 1;
+
+  /* spokes core -> tools */
+  for (const n of nodes) {
+    const p = project(n.p); n.scr = p;
+    g.strokeStyle = n.color + (n.pulse > 0.05 ? "66" : "14"); g.lineWidth = 1 + n.pulse * 2;
+    g.beginPath(); g.moveTo(cp.x, cp.y); g.lineTo(p.x, p.y); g.stroke();
+  }
+
+  /* orbs */
+  for (const o of orbs.values()) {
+    const k = ease(clamp((now - o.born) / 1300, 0, 1));
+    o.p = arc(o.from, o.to, k).map((v, i) => (k < 1 ? v : o.to[i]));
+    o.flash = Math.max(0, o.flash - dt * 0.0015);
+  }
+
+  /* beams (citation check) */
+  for (const b of beams) {
+    const k = ease(clamp((now - b.t0) / 900, 0, 1)), o = b.orb, p = project(o.p);
+    const ex = lerp(cp.x, p.x, k), ey = lerp(cp.y, p.y, k);
+    const lit = highlight === o ? 1 : 0.55;
+    g.setLineDash(b.ok ? [] : [6, 7]); g.lineDashOffset = -now * 0.03;
+    g.strokeStyle = (b.ok ? C.ok : C.bad) + (b.ok ? "" : "");
+    g.globalAlpha = b.ok ? lit : (0.4 + 0.5 * Math.abs(Math.sin(now * 0.012))) * lit;
+    g.lineWidth = highlight === o ? 3 : 1.6;
+    g.beginPath(); g.moveTo(cp.x, cp.y); g.lineTo(ex, ey); g.stroke();
+    g.setLineDash([]); g.globalAlpha = 1;
+  }
+
+  /* packets */
+  for (let i = packets.length - 1; i >= 0; i--) {
+    const pk = packets[i], t = (now - pk.t0) / pk.dur;
+    if (t >= 1.25) { packets.splice(i, 1); continue; }
+    const q = project(arc(typeof pk.a === "function" ? pk.a() : pk.a, typeof pk.b === "function" ? pk.b() : pk.b, ease(clamp(t, 0, 1))));
+    if (t < 1) pk.trail.push([q.x, q.y]); if (pk.trail.length > 22 || t >= 1) pk.trail.shift();
+    for (let j = 1; j < pk.trail.length; j++) {
+      g.strokeStyle = pk.color; g.globalAlpha = j / pk.trail.length; g.lineWidth = 2.4 * (j / pk.trail.length);
+      g.beginPath(); g.moveTo(...pk.trail[j - 1]); g.lineTo(...pk.trail[j]); g.stroke();
+    }
+    g.globalAlpha = 1;
+    if (t < 1) { const sz = 34 * q.s + 14; g.drawImage(glow(pk.color), q.x - sz / 2, q.y - sz / 2, sz, sz); }
+  }
+
+  /* depth-sorted bodies: tool nodes + orbs */
+  const bodies = [];
+  for (const n of nodes) bodies.push({ kind: "node", n, p: n.scr });
+  for (const o of orbs.values()) { o.scr = project(o.p); bodies.push({ kind: "orb", n: o, p: o.scr }); }
+  bodies.sort((a, b) => b.p.z - a.p.z);
+
+  let best = null, bestD = 1e9;
+  for (const b of bodies) {
+    const p = b.p, depth = clamp(1.25 - (p.z - cam.dist) / 900, 0.35, 1.15);
+    if (b.kind === "node") {
+      const n = b.n; n.pulse = Math.max(0, n.pulse - dt * 0.0009); n.flash = Math.max(0, n.flash - dt * 0.002); n.err = Math.max(0, n.err - dt * 0.001);
+      const col = n.err > 0.05 ? C.bad : n.color, isH = hovered === n;
+      const sz = (70 + n.pulse * 90 + n.flash * 60 + (isH ? 40 : 0)) * p.s;
+      g.globalAlpha = 0.5 + n.pulse * 0.5; g.drawImage(glow(col), p.x - sz / 2, p.y - sz / 2, sz, sz);
+      g.globalAlpha = depth; g.fillStyle = col; g.beginPath(); g.arc(p.x, p.y, (6 + n.pulse * 3) * p.s * 1.3, 0, 7); g.fill();
+      if (n.pulse > 0.05) {
+        const rr = (1 - n.pulse) * 46 * p.s + 10; g.strokeStyle = col; g.globalAlpha = n.pulse; g.lineWidth = 1.2;
+        g.beginPath(); g.arc(p.x, p.y, rr, 0, 7); g.stroke();
+      }
+      g.globalAlpha = 1;
+      n.el.style.transform = `translate(${p.x + 14}px,${p.y - 10}px)`;
+      n.el.style.opacity = clamp(depth - 0.25, 0.25, 1) * (isH ? 1 : 0.85);
+    } else {
+      const o = b.n, born = clamp((performance.now() - o.born) / 600, 0, 1);
+      const col = o.state === "verified" ? C.ok : o.state === "ghost" ? C.bad : o.color;
+      const isH = hovered === o || highlight === o;
+      const base = o.state === "ghost" ? 13 * (0.7 + 0.3 * Math.sin(now * 0.02)) : 7 + Math.min(o.hits, 4);
+      const sz = (base * 6 + o.flash * 50 + (isH ? 46 : 0)) * p.s * born;
+      g.globalAlpha = 0.65 * depth; g.drawImage(glow(col), p.x - sz / 2, p.y - sz / 2, sz, sz);
+      g.globalAlpha = depth; g.fillStyle = col;
+      g.beginPath(); g.arc(p.x, p.y, base * 0.55 * p.s * 1.4 * born, 0, 7);
+      o.state === "ghost" ? (g.strokeStyle = col, g.lineWidth = 1.4, g.setLineDash([3, 3]), g.stroke(), g.setLineDash([])) : g.fill();
+      if (o.state === "verified") { g.strokeStyle = C.ok; g.lineWidth = 1; g.beginPath(); g.arc(p.x, p.y, 14 * p.s + 6 + Math.sin(now * 0.004) * 2, 0, 7); g.stroke(); }
+      if (o.state === "ghost" && born > 0.5) {
+        /* the fabricated source: a broken, pulsing ring with a cross and a label */
+        const r = 16 + 6 * Math.sin(now * 0.008), k = 6;
+        g.globalAlpha = 1; g.strokeStyle = C.bad; g.lineWidth = 1.6;
+        g.setLineDash([4, 5]); g.lineDashOffset = now * 0.02; g.beginPath(); g.arc(p.x, p.y, r + 10, 0, 7); g.stroke(); g.setLineDash([]);
+        g.beginPath(); g.moveTo(p.x - k, p.y - k); g.lineTo(p.x + k, p.y + k); g.moveTo(p.x + k, p.y - k); g.lineTo(p.x - k, p.y + k); g.stroke();
+        g.globalCompositeOperation = "source-over";
+        g.font = "500 11px 'JetBrains Mono', monospace"; g.fillStyle = C.bad; g.textAlign = "center";
+        g.fillText("NEVER SEEN", p.x, p.y - r - 18);
+        g.fillStyle = "rgba(255,194,205,.75)"; g.font = "400 10px 'JetBrains Mono', monospace";
+        g.fillText(o.url.replace(/^https?:\/\//, "").slice(0, 38), p.x, p.y + r + 26);
+        g.textAlign = "start"; g.globalCompositeOperation = "lighter";
+      }
+      g.globalAlpha = 1;
+    }
+    const d = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+    if (d < 34 && d < bestD) { bestD = d; best = b.n; }
+  }
+  g.globalCompositeOperation = "source-over";
+
+  /* hover logic */
+  if (best !== hovered) {
+    hovered = best;
+    if (hovered && hovered.name) {
+      setCursor("node", hovered.name, hovered.color);
+      tip.innerHTML = `<b style="color:${hovered.color}">${hovered.name}</b>${hovered.about}<br><small>${{ web: "web · output treated as untrusted", api: "public API · output treated as untrusted", local: "runs locally · trusted" }[hovered.kind]} · ${hovered.calls} call${hovered.calls === 1 ? "" : "s"} this run</small>`;
+    } else if (hovered && hovered.url) {
+      const st = { seen: "seen by the agent", verified: "cited and verified", ghost: "cited but never seen" }[hovered.state];
+      setCursor("node", st, hovered.state === "ghost" ? C.bad : hovered.state === "verified" ? C.ok : hovered.color);
+      tip.innerHTML = `<b style="color:${hovered.state === "ghost" ? C.bad : hovered.state === "verified" ? C.ok : hovered.color}">${st}</b><small>${esc(hovered.url)}</small>${hovered.tool ? `<br><small>found by ${hovered.tool}${hovered.hits > 1 ? ` · ${hovered.hits}×` : ""}</small>` : ""}`;
+    } else if (document.elementFromPoint(mouse.x, mouse.y) === cv) setCursor("");
+    tip.classList.toggle("on", !!hovered);
+  }
+  if (hovered) {
+    const tx = clamp(mouse.x + 22, 8, innerWidth - 340), ty = clamp(mouse.y + 22, 8, innerHeight - 120);
+    tip.style.left = tx + "px"; tip.style.top = ty + "px";
+  }
+  cursorFrame();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================== UI state ============================== */
+let mode = "demo", config = { live: false, demo_question: "" }, es = null, running = false;
+const stats = { steps: 0, tools: 0, cache: 0, tok: 0 };
+const stepEls = new Map();
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === m));
+  const active = document.querySelector(`.seg button[data-mode=${m}]`), pill = $("#pill");
+  pill.style.left = active.offsetLeft + "px"; pill.style.width = active.offsetWidth + "px";
+  $("#q").placeholder = m === "demo" ? config.demo_question || "Demo question (offline)" : "Ask a research question…";
+}
+document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
+
+function countTo(el, v) {
+  const from = +el.dataset.v || 0; el.dataset.v = v; const t0 = performance.now();
+  (function tick(t) { const k = ease(clamp((t - t0) / 700, 0, 1)); el.textContent = Math.round(lerp(from, v, k)).toLocaleString(); if (k < 1) requestAnimationFrame(tick); })(t0);
+}
+function bump(k, v) { stats[k] = v; countTo($("#s-" + k), v); }
+
+function addStep(html, color, id) {
+  const ol = $("#steps"); ol.querySelector(".empty")?.remove();
+  const li = document.createElement("li"); li.innerHTML = html; li.style.setProperty("--c", color);
+  ol.appendChild(li); requestAnimationFrame(() => requestAnimationFrame(() => li.classList.add("in")));
+  ol.scrollTo({ top: ol.scrollHeight, behavior: reduced ? "auto" : "smooth" });
+  if (id) stepEls.set(id, li);
+  return li;
+}
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), 4200);
+}
+function shortArgs(input) {
+  return Object.entries(input || {}).map(([k, v]) => `${k}=${String(v).length > 46 ? String(v).slice(0, 44) + "…" : v}`).join(", ");
+}
+
+function reset() {
+  orbs.clear(); orbCount = 0; ghostCount = 0; beams.length = 0; packets.length = 0; highlight = null;
+  nodes.forEach((n) => { n.calls = 0; n.pulse = 0; });
+  $("#steps").innerHTML = ""; stepEls.clear();
+  ["steps", "tools", "cache", "tok"].forEach((k) => bump(k, 0));
+  $("#answer").classList.remove("show"); document.body.classList.remove("answering");
+}
+
+/* ============================== events ============================== */
+function handle(ev) {
+  const node = (name) => nodes.find((n) => n.name === name);
+  switch (ev.event) {
+    case "run_start":
+      $("#runid").textContent = ev.run_id; coreState.target = 0.7;
+      addStep(`Question received<span class="meta">${esc(ev.question)}</span>`, C.core);
+      break;
+    case "model_turn":
+      bump("steps", stats.steps + 1); bump("tok", stats.tok + (ev.input_tokens || 0) + (ev.output_tokens || 0));
+      coreState.target = 1; setTimeout(() => (coreState.target = 0.55), 600);
+      if (ev.tool_calls?.length) addStep(`${ev.text ? esc(ev.text) : "Choosing tools"}<span class="meta">step ${ev.step} · ${ev.tool_calls.length} tool call${ev.tool_calls.length > 1 ? "s" : ""}${ev.tool_calls.length > 1 ? " in parallel" : ""}</span>`, C.core);
+      else addStep(`Writing the final answer<span class="meta">step ${ev.step}</span>`, C.core);
+      break;
+    case "tool_start": {
+      const n = node(ev.name); if (!n) break;
+      n.pulse = 1; n.calls++;
+      sendPacket([0, 0, 0], () => n.p, n.color, 850);
+      addStep(`<b style="font-weight:500;color:${n.color}">${ev.name}</b><span class="meta">${esc(shortArgs(ev.input))}</span>`, n.color, ev.id).classList.add("run");
+      break;
+    }
+    case "tool_result": {
+      const n = node(ev.name); if (!n) break;
+      bump("tools", stats.tools + 1); if (ev.cached) bump("cache", stats.cache + 1);
+      n.flash = 1; if (!ev.ok) n.err = 1;
+      sendPacket(() => n.p, [0, 0, 0], ev.ok ? (ev.cached ? C.core : n.color) : C.bad, 800);
+      (ev.urls || []).forEach((u, i) => setTimeout(() => addOrb(u, n), 150 * i));
+      const li = stepEls.get(ev.id);
+      if (li) {
+        li.classList.remove("run");
+        const tag = ev.cached ? `<span class="tag cache">CACHED</span>` : ev.ok ? `<span class="tag ok">${ev.seconds.toFixed(2)}s</span>` : `<span class="tag err">FAILED</span>`;
+        li.querySelector("b").insertAdjacentHTML("afterend", tag);
+        if (ev.urls?.length) li.insertAdjacentHTML("beforeend", `<span class="meta">+${ev.urls.length} source${ev.urls.length > 1 ? "s" : ""} into the sphere</span>`);
+        li.title = ev.preview || "";
+      }
+      break;
+    }
+    case "run_end": verify(ev); break;
+    case "error": toast(ev.message); break;
+    case "done": finish(); break;
+  }
+}
+
+function verify(ev) {
+  coreState.target = 0.35;
+  const cited = ev.cited || [], bad = new Set((ev.ungrounded || []).map(normalize));
+  addStep(`Checking ${cited.length} citation${cited.length === 1 ? "" : "s"} against what the tools returned`, C.ok);
+  const linked = [];
+  cited.forEach((u, i) => setTimeout(() => {
+    const isBad = bad.has(normalize(u));
+    const o = isBad ? addOrb(u, null, true) : orbs.get(normalize(u)) || addOrb(u, null);
+    if (!isBad) o.state = "verified";
+    beams.push({ orb: o, ok: !isBad, t0: performance.now() });
+    linked.push(o);
+    if (isBad && !reduced) { $("#flash").classList.add("on"); setTimeout(() => $("#flash").classList.remove("on"), 140); document.body.classList.remove("shake"); void document.body.offsetWidth; document.body.classList.add("shake"); }
+  }, 450 + i * 520));
+  setTimeout(() => showAnswer(ev, cited, bad, linked), 650 + cited.length * 520);
+  const good = cited.length - bad.size;
+  addStep(cited.length ? `${good} of ${cited.length} citations verified${bad.size ? ` · <span style="color:var(--bad)">${bad.size} never seen</span>` : ""}` : "No links cited", bad.size ? C.bad : C.ok);
+}
+
+function renderAnswer(text) {
+  const lines = esc(text).split("\n"), out = []; let list = false;
+  for (const l of lines) {
+    const linked = l.replace(/https?:\/\/[^\s<)]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+    if (/^\s*[-*] /.test(l)) { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${linked.replace(/^\s*[-*] /, "")}</li>`); }
+    else { if (list) { out.push("</ul>"); list = false; } if (l.trim()) out.push(`<p>${linked}</p>`); }
+  }
+  if (list) out.push("</ul>");
+  return out.join("");
+}
+
+function showAnswer(ev, cited, bad, linked) {
+  const box = $("#abody"), full = renderAnswer(ev.answer || "");
+  $("#answer").classList.add("show"); document.body.classList.add("answering");
+  if (reduced) box.innerHTML = full;
+  else {
+    const plain = ev.answer || ""; let i = 0;
+    (function type() {
+      i = Math.min(plain.length, i + Math.max(2, Math.round(plain.length / 140)));
+      box.innerHTML = renderAnswer(plain.slice(0, i)) + (i < plain.length ? '<span class="caret"></span>' : "");
+      box.scrollTop = box.scrollHeight;
+      if (i < plain.length) setTimeout(type, 16); else { box.innerHTML = full; box.scrollTo({ top: 0, behavior: "smooth" }); }
+    })();
+  }
+  const good = cited.length - bad.size, pct = cited.length ? Math.round((good / cited.length) * 100) : 100;
+  const gv = $("#gval"); gv.style.stroke = pct === 100 ? C.ok : pct >= 60 ? "#facc15" : C.bad;
+  setTimeout(() => (gv.style.strokeDashoffset = 176 - (176 * pct) / 100), 200);
+  countTo($("#gnum"), pct); setTimeout(() => ($("#gnum").textContent = pct + "%"), 760);
+  $("#vtext").innerHTML = cited.length
+    ? `<b>${good} of ${cited.length}</b> cited sources were actually seen by the agent.${bad.size ? ` <span style="color:var(--bad)">${bad.size} link${bad.size > 1 ? " was" : " was"} never opened or returned by any tool.</span>` : ""}`
+    : "The answer cites no links.";
+  const chips = $("#chips"); chips.innerHTML = "";
+  cited.forEach((u, i) => {
+    const isBad = bad.has(normalize(u)), a = document.createElement("a");
+    a.className = "chip " + (isBad ? "bad" : "ok"); a.href = u; a.target = "_blank"; a.rel = "noopener";
+    a.innerHTML = `<i>${isBad ? "✕" : "✓"}</i><span>${esc(u.replace(/^https?:\/\//, ""))}</span>`;
+    a.addEventListener("pointerenter", () => (highlight = linked[i] || orbs.get(normalize(u))));
+    a.addEventListener("pointerleave", () => (highlight = null));
+    chips.appendChild(a); setTimeout(() => a.classList.add("in"), 300 + i * 90);
+  });
+}
+
+function finish() {
+  running = false; es?.close(); es = null; coreState.target = 0.2;
+  const b = $("#run"); b.disabled = false; b.querySelector("span").textContent = "Run again";
+}
+
+/* ============================== run ============================== */
+$("#bar").addEventListener("submit", (e) => {
+  e.preventDefault(); if (running) return;
+  const q = $("#q").value.trim();
+  if (mode === "live" && !q) { toast("Type a question for Live mode."); $("#q").focus(); return; }
+  reset(); running = true;
+  const b = $("#run"); b.disabled = true; b.querySelector("span").textContent = "Researching…";
+  es = new EventSource(`/api/run?mode=${mode}&q=${encodeURIComponent(q)}`);
+  es.onmessage = (m) => { try { handle(JSON.parse(m.data)); } catch (err) { console.error(err); } };
+  es.onerror = () => {
+    if (!running) return;
+    const runMode = mode; finish();
+    // EventSource hides error bodies; for Live mode ask again to show the server's reason
+    if (runMode === "live") fetch(`/api/run?mode=live&q=${encodeURIComponent(q)}`).then((r) => r.json()).then((j) => toast(j.error || "Connection lost.")).catch(() => toast("Connection lost."));
+    else toast("Connection lost.");
+  };
+});
+const closeAnswer = () => { $("#answer").classList.remove("show"); document.body.classList.remove("answering"); };
+$("#close").addEventListener("click", closeAnswer);
+addEventListener("keydown", (e) => { if (e.key === "Escape") closeAnswer(); });
+
+/* ============================== intro ============================== */
+(function title() {
+  const h = $("#title"), words = []; let d = 0;
+  h.childNodes.forEach((nd) => {
+    const em = nd.nodeType === 1; const txt = nd.textContent;
+    txt.split(/(\s+)/).forEach((w) => { if (!w.trim()) { words.push(w); return; } words.push(`<span class="w"><span style="transition-delay:${0.15 + d++ * 0.07}s">${em ? `<em>${w}</em>` : w}</span></span>`); });
+  });
+  h.innerHTML = words.join("");
+})();
+document.querySelectorAll(".reveal").forEach((el, i) => (el.style.transitionDelay = 0.35 + i * 0.12 + "s"));
+
+fetch("/api/config").then((r) => r.json()).then((c) => {
+  config = c;
+  const live = document.querySelector(".seg button[data-mode=live]");
+  live.disabled = !c.live; live.title = c.live ? `Live research with ${c.model}` : "Set ANTHROPIC_API_KEY on the server to enable Live mode";
+  setMode(c.live ? "live" : "demo");
+}).catch(() => setMode("demo"));
+
+(function intro() {
+  const el = $("#count"), t0 = performance.now(), dur = reduced ? 10 : 1300;
+  (function tick(t) {
+    const k = clamp((t - t0) / dur, 0, 1); el.textContent = String(Math.round(ease(k) * 100)).padStart(2, "0");
+    if (k < 1) return requestAnimationFrame(tick);
+    $("#intro").classList.add("gone"); document.body.classList.add("ready"); setMode(mode);
+  })(t0);
+})();
+</script>
+</body>
+</html>
