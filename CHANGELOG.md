@@ -6,6 +6,7 @@
 - 3D evidence lab web UI (`research-agent-ui`): live tool calls, evidence sphere, citation verdict, custom cursor and transitions. No JavaScript libraries.
 - Server-Sent Events stream of agent events from a standard-library web server.
 - `tool_start` events, source URLs on `tool_result` and full citation lists on `run_end`.
+- Static GitHub Pages build (`scripts/build_pages.py`): the UI replays a recorded run, so it works with no server.
 - Offline demo with stand-in tools, a cache hit and one deliberately invented citation.
 
 ## 0.2.0

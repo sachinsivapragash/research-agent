@@ -17,6 +17,8 @@ research-agent-ui
 
 Opens the evidence lab in your browser. Press **Run** to watch the offline demo, no API key needed.
 
+**Live demo (recorded run, no install):** https://sachinsivapragash.github.io/research-agent/
+
 ## Why this project
 
 Most agent demos hide the hard parts. This one shows them:
@@ -85,6 +87,7 @@ question ─► │ Agent loop                                   │ ─► repo
 | `web.py` | Local web server streaming live events (standard library only) |
 | `static/index.html` | The 3D evidence lab, no dependencies |
 | `demo.py` | Offline scripted run with stand-in tools |
+| `scripts/build_pages.py` | Records the demo and builds the static `docs/` site for GitHub Pages |
 
 ## Quick start
 

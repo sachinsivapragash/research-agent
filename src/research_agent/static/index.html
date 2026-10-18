@@ -569,7 +569,7 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 /* ============================== UI state ============================== */
-let mode = "demo", config = { live: false, demo_question: "" }, es = null, running = false;
+let mode = "demo", config = { live: false, demo_question: "" }, es = null, running = false, staticMode = false;
 const stats = { steps: 0, tools: 0, cache: 0, tok: 0 };
 const stepEls = new Map();
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -727,6 +727,7 @@ $("#bar").addEventListener("submit", (e) => {
   if (mode === "live" && !q) { toast("Type a question for Live mode."); $("#q").focus(); return; }
   reset(); running = true;
   const b = $("#run"); b.disabled = true; b.querySelector("span").textContent = "Researching…";
+  if (staticMode) return replay();
   es = new EventSource(`/api/run?mode=${mode}&q=${encodeURIComponent(q)}`);
   es.onmessage = (m) => { try { handle(JSON.parse(m.data)); } catch (err) { console.error(err); } };
   es.onerror = () => {
@@ -752,12 +753,30 @@ addEventListener("keydown", (e) => { if (e.key === "Escape") closeAnswer(); });
 })();
 document.querySelectorAll(".reveal").forEach((el, i) => (el.style.transitionDelay = 0.35 + i * 0.12 + "s"));
 
+/* Static hosting (GitHub Pages): no server, so replay a recorded demo run instead */
+function replay() {
+  fetch("demo-events.json").then((r) => r.json()).then((events) => {
+    const t0 = events[0].ts; let prev = t0;
+    events.forEach((ev) => {
+      const at = (ev.ts - t0) * 1000;
+      prev = ev.ts; setTimeout(() => handle(ev), at);
+    });
+    setTimeout(() => handle({ event: "done" }), (events[events.length - 1].ts - t0) * 1000 + 50);
+  }).catch(() => { toast("Could not load the recorded demo."); finish(); });
+}
+
 fetch("/api/config").then((r) => r.json()).then((c) => {
   config = c;
   const live = document.querySelector(".seg button[data-mode=live]");
   live.disabled = !c.live; live.title = c.live ? `Live research with ${c.model}` : "Set ANTHROPIC_API_KEY on the server to enable Live mode";
   setMode(c.live ? "live" : "demo");
-}).catch(() => setMode("demo"));
+}).catch(() => {
+  staticMode = true; config.demo_question = "Do electric cars really produce less CO2 than petrol cars over their lifetime?";
+  const live = document.querySelector(".seg button[data-mode=live]");
+  live.disabled = true; live.title = "Live mode needs the Python server. This page replays a recorded demo.";
+  $(".hint").textContent = "recorded demo · drag to orbit · scroll to zoom · hover anything";
+  setMode("demo");
+});
 
 (function intro() {
   const el = $("#count"), t0 = performance.now(), dur = reduced ? 10 : 1300;
