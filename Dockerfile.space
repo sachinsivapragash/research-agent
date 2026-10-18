@@ -1,0 +1,20 @@
+# Public host (e.g. a Hugging Face Docker Space). The key is a host secret, never in this file.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
+    RESEARCH_AGENT_LIVE_PER_IP_HOUR=5 RESEARCH_AGENT_LIVE_PER_DAY=150 \
+    RESEARCH_AGENT_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai \
+    RESEARCH_AGENT_MODEL=gemini-3.8-flash \
+    PORT=7860
+
+WORKDIR /app
+COPY pyproject.toml README.md LICENSE ./
+COPY src ./src
+RUN pip install .
+
+RUN useradd --create-home --uid 1000 agent
+USER agent
+WORKDIR /home/agent
+
+EXPOSE 7860
+CMD ["research-agent-ui", "--host", "0.0.0.0", "--no-browser"]

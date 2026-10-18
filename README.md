@@ -201,3 +201,7 @@ CI runs all of these on Python 3.10 to 3.13, builds the Docker image and runs th
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Hosting a public Live demo
+
+`Dockerfile.space` is set up for a free Docker host such as a Hugging Face Space. Store `RESEARCH_AGENT_API_KEY` as the host's **secret** (never in the repo). Each visitor gets 5 live runs per hour and the site has a daily cap of 150 (`RESEARCH_AGENT_LIVE_PER_IP_HOUR`, `RESEARCH_AGENT_LIVE_PER_DAY`), so strangers cannot drain your quota. Free model tiers may use prompts to improve the provider's products, so tell visitors not to type private information.

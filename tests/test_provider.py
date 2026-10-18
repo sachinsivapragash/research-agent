@@ -163,3 +163,16 @@ def test_extra_content_round_trip() -> None:
     assert message["content"][0]["extra"] == sig
     out = OpenAICompatLLM.to_openai_messages("s", [message])
     assert out[1]["tool_calls"][0]["extra_content"] == sig
+
+
+def test_live_limiter() -> None:
+    from research_agent.limits import LiveLimiter
+
+    lim = LiveLimiter(per_ip_hour=2, per_day=3)
+    assert lim.check("a", now=0) is None
+    assert lim.check("a", now=1) is None
+    assert "per hour" in (lim.check("a", now=2) or "")
+    assert lim.check("b", now=3) is None  # third run of the day
+    assert "Daily" in (lim.check("c", now=4) or "")
+    assert "Daily" in (lim.check("a", now=4000) or "")
+    assert lim.check("a", now=90000) is None  # a day later

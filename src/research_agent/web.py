@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlparse
 
 from research_agent.agent import Agent
 from research_agent.demo import DEMO_QUESTION, demo_llm, demo_registry
+from research_agent.limits import LiveLimiter
 from research_agent.llm import LLM, live_configured, make_llm
 from research_agent.tools import Notes, ToolRegistry, default_registry
 from research_agent.tracing import Tracer
@@ -36,6 +37,13 @@ def _index_html() -> bytes:
     return resources.files("research_agent").joinpath("static/index.html").read_bytes()
 
 
+def _env_int(name: str) -> int:
+    try:
+        return max(0, int(os.environ.get(name, "0")))
+    except ValueError:
+        return 0
+
+
 class AgentServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -43,6 +51,9 @@ class AgentServer(ThreadingHTTPServer):
         super().__init__(address, Handler)
         self.demo_delay = demo_delay
         self.slots = threading.BoundedSemaphore(MAX_CONCURRENT_RUNS)
+        self.limiter = LiveLimiter(
+            _env_int("RESEARCH_AGENT_LIVE_PER_IP_HOUR"), _env_int("RESEARCH_AGENT_LIVE_PER_DAY")
+        )
 
     @property
     def live_available(self) -> bool:
@@ -57,6 +68,13 @@ class Handler(BaseHTTPRequestHandler):
         pass  # keep the terminal clean
 
     # ---------------------------------------------------------------- helpers
+
+    def _client_ip(self) -> str:
+        # Behind a hosting proxy the last X-Forwarded-For entry is the one the proxy added.
+        forwarded = self.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[-1].strip()
+        return str(self.client_address[0])
 
     def _send(self, status: int, body: bytes, content_type: str) -> None:
         self.send_response(status)
@@ -123,6 +141,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(HTTPStatus.BAD_REQUEST, {"error": "question is too long"})
         if not self.server.slots.acquire(blocking=False):
             return self._json(HTTPStatus.TOO_MANY_REQUESTS, {"error": "busy, try again"})
+        if mode == "live":
+            reason = self.server.limiter.check(self._client_ip())
+            if reason:
+                self.server.slots.release()
+                return self._json(HTTPStatus.TOO_MANY_REQUESTS, {"error": reason})
 
         try:
             self._stream(question, llm, tools)
@@ -172,7 +195,7 @@ def serve(host: str = "127.0.0.1", port: int = 8765, demo_delay: float = 1.0) ->
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="research-agent-ui", description="Open the 3D web UI.")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8765")))
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser")
     args = parser.parse_args(argv)
 
