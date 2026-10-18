@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.10", "types-requests", "pre-commit>=3"]
+dev = ["pytest>=8", "pytest-cov>=7.1.0", "ruff>=0.6", "mypy>=1.10", "types-requests", "pre-commit>=3"]
 
 [project.scripts]
 research-agent = "research_agent.cli:main"
